@@ -50,6 +50,11 @@ async function run() {
     const exhibitionCollection = client.db("artsenseDb").collection("exhibition");
     const eventCollection = client.db("artsenseDb").collection("event");
     const auctionCollection = client.db("artsenseDb").collection("auction");
+    const exhibitionNavbarCollection = client.db("artsenseDb").collection("exhibitionNavbar");
+    const auctionNavbarCollection = client.db("artsenseDb").collection("auctionNavbar");
+    const bidCollection = client.db("artsenseDb").collection("bid");
+
+
 
     app.post('/jwt', (req, res) => {
       const user = req.body;
@@ -206,7 +211,28 @@ async function run() {
       const result = await exhibitionCollection.find().toArray();
       res.send(result);
     })
-    // todo for cover....
+    // Exhibition Navbar
+    app.get('/exhibitionNavbar', async (req, res) => {
+      const result = await exhibitionNavbarCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.post('/exhibitionNavbar', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = {
+        ...req.body,
+        createdAt: new Date(), // Add a timestamp
+      };
+      const result = await exhibitionNavbarCollection.insertOne(newItem);
+      res.send(result);
+    });
+
+    app.delete('/exhibitionNavbar/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await exhibitionNavbarCollection.deleteOne(query);
+      res.send(result);
+    })
+
 
     // Event related api
 
@@ -232,19 +258,126 @@ async function run() {
       res.send(result);
     })
 
-        // load single data
-        app.get('/auction/:id', async (req, res) => {
-          const id = req.params.id;
-          const query = { _id: new ObjectId(id) };
-          const result = await auctionCollection.findOne(query);
-          res.send(result);
-        });
-      
-        app.post('/auction', verifyJWT, verifyAdmin, async (req, res) => {
-          const newItem = req.body;
-          const result = await auctionCollection.insertOne(newItem)
-          res.send(result);
-        });
+    // load single data
+    app.get('/auction/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await auctionCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post('/auction', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
+      const result = await auctionCollection.insertOne(newItem)
+      res.send(result);
+    });
+    // Auction Navbar
+    app.get('/auctionNavbar', async (req, res) => {
+      const result = await auctionNavbarCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.post('/auctionNavbar', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = {
+        ...req.body,
+        createdAt: new Date(), // Add a timestamp
+      };
+      const result = await auctionNavbarCollection.insertOne(newItem);
+      res.send(result);
+    });
+
+    app.delete('/auctionNavbar/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await auctionNavbarCollection.deleteOne(query);
+      res.send(result);
+    })
+
+    // Bid
+    
+    app.get('/bid', async (req, res) => {
+      const result = await bidCollection.find().toArray();
+      res.send(result);
+    })
+
+
+    app.post('/bid', async (req, res) => {
+      const { bidAmount, email, lotId } = req.body;
+    
+      // Validate the input
+      if (!bidAmount || !email || !lotId) {
+        return res.status(400).send({ message: "Invalid bid data" });
+      }
+    
+      const bidData = {
+        lotId,
+        bidAmount,
+        email,
+        createdAt: new Date(),
+      };
+    
+      try {
+        // Increment the `placeBidCount` for the auction
+        await photoCollection.updateOne(
+          { lotId },
+          { $inc: { placeBidCount: 1 } }, // Increment the count
+          { upsert: true } // Ensure the document exists
+        );
+    
+        // Check if the user has already bid on this lot (using lotId and email)
+        const existingBid = await bidCollection.findOne({ lotId, email });
+    
+        if (!existingBid) {
+          // Increment unique bidder count only if it's a new bidder
+          await photoCollection.updateOne(
+            { lotId }, // Use lotId to find the auction
+            { $inc: { uniqueBidders: 1 } }, // Increment the count
+            { upsert: true }
+          );
+        }
+    
+        // Insert bid details into bidCollection
+        const insertResult = await bidCollection.insertOne(bidData);
+    
+        if (insertResult.insertedId) {
+          res.send({
+            message: "Bid placed successfully",
+            insertedId: insertResult.insertedId,
+          });
+        } else {
+          res.status(500).send({ message: "Failed to place bid" });
+        }
+      } catch (error) {
+        console.error("Error placing bid:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.get('/auction/photo/:lotId/bid-count', async (req, res) => {
+      const { lotId } = req.params;  // The lotId passed in the URL
+    
+      try {
+        const bidCount = await bidCollection.countDocuments({ lotId: lotId });  // Count the number of bids for the given lotId
+        res.send({ bidCount });
+      } catch (error) {
+        console.error("Error fetching bid count:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
+    app.delete('/bid/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await bidCollection.deleteOne(query);
+      res.send(result);
+    })
+
+ 
+    
+    
+ 
+
+    
 
 
     // Send a ping to confirm a successful connection
