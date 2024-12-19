@@ -53,6 +53,7 @@ async function run() {
     const exhibitionNavbarCollection = client.db("artsenseDb").collection("exhibitionNavbar");
     const auctionNavbarCollection = client.db("artsenseDb").collection("auctionNavbar");
     const bidCollection = client.db("artsenseDb").collection("bid");
+    const totalBidCollection = client.db("artsenseDb").collection("totalBid");
 
 
 
@@ -318,7 +319,7 @@ async function run() {
     
       try {
         // Increment the `placeBidCount` for the auction
-        await photoCollection.updateOne(
+        await totalBidCollection.updateOne(
           { lotId },
           { $inc: { placeBidCount: 1 } }, // Increment the count
           { upsert: true } // Ensure the document exists
@@ -329,7 +330,7 @@ async function run() {
     
         if (!existingBid) {
           // Increment unique bidder count only if it's a new bidder
-          await photoCollection.updateOne(
+          await totalBidCollection.updateOne(
             { lotId }, // Use lotId to find the auction
             { $inc: { uniqueBidders: 1 } }, // Increment the count
             { upsert: true }
@@ -353,7 +354,7 @@ async function run() {
       }
     });
 
-    app.get('/auction/photo/:lotId/bid-count', async (req, res) => {
+    app.get('/bid/:lotId/bid-count', async (req, res) => {
       const { lotId } = req.params;  // The lotId passed in the URL
     
       try {
