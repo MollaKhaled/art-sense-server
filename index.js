@@ -14,14 +14,14 @@ app.use(express.json());
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
-  if(!authorization){
-    return res.status(401).send({error: true, message: 'unauthorized access'})
+  if (!authorization) {
+    return res.status(401).send({ error: true, message: 'unauthorized access' })
   }
   // bearer token
   const token = authorization.split(' ')[1];
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if(err){
-      return res.status(401).send({error: true, message: 'unauthorized access'})
+    if (err) {
+      return res.status(401).send({ error: true, message: 'unauthorized access' })
     }
     req.decoded = decoded;
     next();
@@ -29,41 +29,41 @@ const verifyJWT = (req, res, next) => {
 }
 
 // send email
-const sendEmail = (emailAddress, emailData) =>{
+const sendEmail = (emailAddress, emailData) => {
   const transporter = nodemailer.createTransport({
-    service:'gmail',
+    service: 'gmail',
     host: "smtp.gmail.com",
     port: 587,
     secure: false, // true for port 465, false for other ports
     auth: {
-      user:process.env.TRANSPORTER_EMAIL,
-      pass:process.env.TRANSPORTER_PASS,
+      user: process.env.TRANSPORTER_EMAIL,
+      pass: process.env.TRANSPORTER_PASS,
     },
   });
 
-   const mailBody = {
+  const mailBody = {
     from: `"artsense" <${process.env.TRANSPORTER_EMAIL}>`, // sender address
     to: emailAddress, // list of receivers
     subject: emailData.subject, // Subject line
-    html:emailData.message, // html body
-   }
-   transporter.sendMail(mailBody, (error, info)=>{
-      if(error){
-        console.log(error)
-      }
-      else{
-        console.log('Email Sent: ' + info.response);
-      }
-    });
+    html: emailData.message, // html body
+  }
+  transporter.sendMail(mailBody, (error, info) => {
+    if (error) {
+      console.log(error)
+    }
+    else {
+      console.log('Email Sent: ' + info.response);
+    }
+  });
 
- // verify connection configuration
+  // verify connection configuration
   transporter.verify(function (error, success) {
     if (error) {
-    console.log(error);
+      console.log(error);
     } else {
-    console.log("Server is ready to take our messages");
+      console.log("Server is ready to take our messages");
     }
-   });
+  });
 
 
 
@@ -87,9 +87,11 @@ async function run() {
     client.connect();
     const userCollection = client.db("artsenseDb").collection("users");
     const photoCollection = client.db("artsenseDb").collection("photo");
+    const photoNavbarCollection = client.db("artsenseDb").collection("addNavbar");
     const cartCollection = client.db("artsenseDb").collection("carts");
     const inquireCollection = client.db("artsenseDb").collection("inquire");
     const exhibitionCollection = client.db("artsenseDb").collection("exhibition");
+    const bookedExhibitionCollection = client.db("artsenseDb").collection("bookedExhibition");
     const eventCollection = client.db("artsenseDb").collection("event");
     const auctionCollection = client.db("artsenseDb").collection("auction");
     const exhibitionNavbarCollection = client.db("artsenseDb").collection("exhibitionNavbar");
@@ -101,19 +103,19 @@ async function run() {
 
     app.post('/jwt', (req, res) => {
       const user = req.body;
-      const token =  jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: '1h'
       })
       res.send({ token })
     })
 
     //  Warning: use verifyJWT before using verifyAdmin
-    const verifyAdmin = async(req, res, next) => {
+    const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
-      const query = {email: email}
+      const query = { email: email }
       const user = await userCollection.findOne(query);
-      if(user?. role !== "admin") {
-        return res.status(403).send({error: true, message: ' forbidden access'})
+      if (user?.role !== "admin") {
+        return res.status(403).send({ error: true, message: ' forbidden access' })
       }
       next();
 
@@ -134,29 +136,29 @@ async function run() {
         return res.send({ message: 'user already exists' })
       }
       const result = await userCollection.insertOne(user);
-       // welcome new user
-       sendEmail(user?.email ,{
-        subject:"Welcome to Airbnb Bd",
-        message:`Browse rooms and book them`
+      // welcome new user
+      sendEmail(user?.email, {
+        subject: "Welcome to Airbnb Bd",
+        message: `Browse rooms and book them`
       })
       res.send(result);
-         
+
     })
 
     app.get('/users/admin/:email', verifyJWT, async (req, res) => {
       const email = req.params.email;
-    
-      if(req.decoded.email !== email){
-        res.send({admin:false})
+
+      if (req.decoded.email !== email) {
+        res.send({ admin: false })
       }
-  
-      const query = { email:email }
+
+      const query = { email: email }
       const user = await userCollection.findOne(query);
       const result = { admin: user?.role === 'admin' }
       res.send(result);
     })
 
-  
+
 
     app.patch('/users/admin/:id', async (req, res) => {
       const id = req.params.id;
@@ -204,6 +206,30 @@ async function run() {
       res.send(result);
     });
 
+     // Photo Navbar
+    app.get('/addNavbar', async (req, res) => {
+      const result = await photoNavbarCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.post('/addNavbar', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = {
+        ...req.body,
+        createdAt: new Date(), // Add a timestamp
+      };
+      const result = await photoNavbarCollection.insertOne(newItem);
+      res.send(result);
+    });
+
+    app.delete('/addNavbar/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await photoNavbarCollection.deleteOne(query);
+      res.send(result);
+    })
+
+
+
     //  carts collection
     app.get('/carts', async (req, res) => {
       const email = req.query.email;
@@ -242,6 +268,28 @@ async function run() {
       const result = await exhibitionCollection.find().toArray();
       res.send(result);
     })
+
+      // load single data
+      app.get('/exhibition/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await exhibitionCollection.findOne(query);
+        res.send(result);
+      });
+
+      app.post('/exhibition', verifyJWT, verifyAdmin, async (req, res) => {
+        const newItem = req.body;
+        const result = await exhibitionCollection.insertOne(newItem)
+        res.send(result);
+      })
+
+      app.delete('/exhibition/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) }
+        const result = await exhibitionCollection.deleteOne(query);
+        res.send(result);
+      })
+
     // Exhibition Navbar
     app.get('/exhibitionNavbar', async (req, res) => {
       const result = await exhibitionNavbarCollection.find().toArray();
@@ -261,6 +309,26 @@ async function run() {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const result = await exhibitionNavbarCollection.deleteOne(query);
+      res.send(result);
+    })
+
+    // booked exhibition
+    app.get('/bookedExhibition', async (req, res) => {
+      const result = await bookedExhibitionCollection.find().toArray();
+      res.send(result);
+    })
+
+
+    app.post('/bookedExhibition', async (req, res) => {
+      const inquire = req.body;
+      const result = await bookedExhibitionCollection.insertOne(inquire);
+      res.send(result);
+    })
+
+    app.delete('/bookedExhibition/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await bookedExhibitionCollection.deleteOne(query);
       res.send(result);
     })
 
@@ -333,7 +401,7 @@ async function run() {
     })
 
     // Bid
-    
+
     app.get('/bid', async (req, res) => {
       const result = await bidCollection.find().toArray();
       res.send(result);
@@ -342,19 +410,19 @@ async function run() {
 
     app.post('/bid', async (req, res) => {
       const { bidAmount, email, lotId } = req.body;
-    
+
       // Validate the input
       if (!bidAmount || !email || !lotId) {
         return res.status(400).send({ message: "Invalid bid data" });
       }
-    
+
       const bidData = {
         lotId,
         bidAmount,
         email,
         createdAt: new Date(),
       };
-    
+
       try {
         // Increment the `placeBidCount` for the auction
         await totalBidCollection.updateOne(
@@ -362,10 +430,10 @@ async function run() {
           { $inc: { placeBidCount: 1 } }, // Increment the count
           { upsert: true } // Ensure the document exists
         );
-    
+
         // Check if the user has already bid on this lot (using lotId and email)
         const existingBid = await bidCollection.findOne({ lotId, email });
-    
+
         if (!existingBid) {
           // Increment unique bidder count only if it's a new bidder
           await totalBidCollection.updateOne(
@@ -374,10 +442,10 @@ async function run() {
             { upsert: true }
           );
         }
-    
+
         // Insert bid details into bidCollection
         const insertResult = await bidCollection.insertOne(bidData);
-    
+
         if (insertResult.insertedId) {
           res.send({
             message: "Bid placed successfully",
@@ -390,19 +458,19 @@ async function run() {
         console.error("Error placing bid:", error);
         res.status(500).send({ message: "Server error" });
       }
-        // send email to guest
-        sendEmail(email, {
-          subject: "Booking Successfully!",
-          message: `Dear Sir/Mam ,<br/> Bid Successful! Thank you for bidding with us. Your reservation has been confirmed. We look forward to serving you soon!`,
-        });
-        
-        
-     
+      // send email to guest
+      sendEmail(email, {
+        subject: "Booking Successfully!",
+        message: `Dear Sir/Mam ,<br/> Bid Successful! Thank you for bidding with us. Your reservation has been confirmed. We look forward to serving you soon!`,
+      });
+
+
+
     });
 
     app.get('/bid/:lotId/bid-count', async (req, res) => {
       const { lotId } = req.params;  // The lotId passed in the URL
-    
+
       try {
         const bidCount = await bidCollection.countDocuments({ lotId: lotId });  // Count the number of bids for the given lotId
         res.send({ bidCount });
