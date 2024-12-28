@@ -198,6 +198,13 @@ async function run() {
       res.send(result);
     })
 
+    app.delete('/photo/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await photoCollection.deleteOne(query);
+      res.send(result);
+    })
+
     // load single data
     app.get('/photo/:id', async (req, res) => {
       const id = req.params.id;
@@ -318,12 +325,30 @@ async function run() {
       res.send(result);
     })
 
-
     app.post('/bookedExhibition', async (req, res) => {
-      const inquire = req.body;
-      const result = await bookedExhibitionCollection.insertOne(inquire);
+      const { id } = req.body;
+    
+      // Check if the item is already booked
+      const existingBooking = await bookedExhibitionCollection.findOne({ id });
+    
+      if (existingBooking) {
+        return res.status(400).send({ error: 'This item is already booked.' });
+      }
+    
+      const result = await bookedExhibitionCollection.insertOne(req.body);
       res.send(result);
-    })
+    });
+    
+    // New endpoint to check the booking status
+    app.get('/bookedExhibition/:id', async (req, res) => {
+      const { id } = req.params;
+    
+      // Find the booking status by ID
+      const existingBooking = await bookedExhibitionCollection.findOne({ id });
+    
+      res.send({ booked: !!existingBooking });
+    });
+    
 
     app.delete('/bookedExhibition/:id', async (req, res) => {
       const id = req.params.id;
