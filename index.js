@@ -4,13 +4,17 @@ const cors = require('cors');
 const port = process.env.PORT || 3000;
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { MongoClient, ServerApiVersion, ObjectId, Admin } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId, Admin, Binary, GridFSBucket } = require('mongodb');
 const nodemailer = require("nodemailer");
+const multer = require('multer');
+const path = require('path');
+const bodyParser = require('body-parser');
 
 
 //middleware
 app.use(cors())
 app.use(express.json());
+app.use(bodyParser.json());
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
@@ -64,10 +68,6 @@ const sendEmail = (emailAddress, emailData) => {
       console.log("Server is ready to take our messages");
     }
   });
-
-
-
-
 }
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m4vej.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -85,6 +85,11 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     client.connect();
+    const db = client.db("artsenseDb");
+    const bucket = new GridFSBucket(db, {
+      bucketName: 'eventFiles', // name of the bucket (you can choose any name)
+    });
+ 
     const userCollection = client.db("artsenseDb").collection("users");
     const photoCollection = client.db("artsenseDb").collection("photo");
     const photoNavbarCollection = client.db("artsenseDb").collection("addNavbar");
@@ -98,7 +103,6 @@ async function run() {
     const auctionNavbarCollection = client.db("artsenseDb").collection("auctionNavbar");
     const bidCollection = client.db("artsenseDb").collection("bid");
     const totalBidCollection = client.db("artsenseDb").collection("totalBid");
-
 
 
     app.post('/jwt', (req, res) => {
@@ -138,8 +142,8 @@ async function run() {
       const result = await userCollection.insertOne(user);
       // welcome new user
       sendEmail(user?.email, {
-        subject: "Welcome to Airbnb Bd",
-        message: `Browse rooms and book them`
+        subject: "Welcome to artsense",
+        message: `Browse pictures and book them`
       })
       res.send(result);
 
@@ -187,6 +191,7 @@ async function run() {
       res.send(result);
     })
 
+
     app.get('/photoCount', async (req, res) => {
       const count = await photoCollection.estimatedDocumentCount();
       res.send({ count });
@@ -213,7 +218,7 @@ async function run() {
       res.send(result);
     });
 
-     // Photo Navbar
+    // Photo Navbar
     app.get('/addNavbar', async (req, res) => {
       const result = await photoNavbarCollection.find().toArray();
       res.send(result);
@@ -276,26 +281,26 @@ async function run() {
       res.send(result);
     })
 
-      // load single data
-      app.get('/exhibition/:id', async (req, res) => {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await exhibitionCollection.findOne(query);
-        res.send(result);
-      });
+    // load single data
+    app.get('/exhibition/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await exhibitionCollection.findOne(query);
+      res.send(result);
+    });
 
-      app.post('/exhibition', verifyJWT, verifyAdmin, async (req, res) => {
-        const newItem = req.body;
-        const result = await exhibitionCollection.insertOne(newItem)
-        res.send(result);
-      })
+    app.post('/exhibition', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
+      const result = await exhibitionCollection.insertOne(newItem)
+      res.send(result);
+    })
 
-      app.delete('/exhibition/:id', async (req, res) => {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) }
-        const result = await exhibitionCollection.deleteOne(query);
-        res.send(result);
-      })
+    app.delete('/exhibition/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await exhibitionCollection.deleteOne(query);
+      res.send(result);
+    })
 
     // Exhibition Navbar
     app.get('/exhibitionNavbar', async (req, res) => {
@@ -327,28 +332,28 @@ async function run() {
 
     app.post('/bookedExhibition', async (req, res) => {
       const { id } = req.body;
-    
+
       // Check if the item is already booked
       const existingBooking = await bookedExhibitionCollection.findOne({ id });
-    
+
       if (existingBooking) {
         return res.status(400).send({ error: 'This item is already booked.' });
       }
-    
+
       const result = await bookedExhibitionCollection.insertOne(req.body);
       res.send(result);
     });
-    
+
     // New endpoint to check the booking status
     app.get('/bookedExhibition/:id', async (req, res) => {
       const { id } = req.params;
-    
+
       // Find the booking status by ID
       const existingBooking = await bookedExhibitionCollection.findOne({ id });
-    
+
       res.send({ booked: !!existingBooking });
     });
-    
+
 
     app.delete('/bookedExhibition/:id', async (req, res) => {
       const id = req.params.id;
@@ -365,15 +370,102 @@ async function run() {
       res.send(result);
     });
 
-    app.post('/event', verifyJWT, verifyAdmin, async (req, res) => {
-      const newItem = {
-        ...req.body,
-        createdAt: new Date(), // Add a timestamp
+
+    // Configure Multer for file uploads
+    const upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 }, // Limit file size to 10MB
+      fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+          cb(null, true);
+        } else {
+          cb(new Error('Only PDF files are allowed'), false);
+        }
+      },
+    });
+    // Endpoint to handle event creation with PDF upload using GridFS
+    app.post('/event', upload.single('file'), async (req, res) => {
+      const { title, press, description, photoUrl } = req.body;
+
+      // Ensure file is present
+      if (!req.file) {
+        return res.status(400).send({ message: 'PDF file is required' });
+      }
+
+      // Get the PDF file buffer
+      const pdfBuffer = req.file.buffer;
+
+      // Create the event object
+      const newEvent = {
+        title,
+        press,
+        description,
+        photoUrl,
+        createdAt: new Date(),
       };
-      const result = await eventCollection.insertOne(newItem);
-      res.send(result);
+
+      // Insert the event data into the database
+      const result = await eventCollection.insertOne(newEvent);
+
+      // Store the PDF file in GridFS
+      const uploadStream = bucket.openUploadStream(`${result.insertedId}_file.pdf`, {
+        metadata: { eventId: result.insertedId }, // Link PDF with the event
+      });
+      uploadStream.end(pdfBuffer);
+
+      // Return a success response
+      res.status(201).send({
+        message: 'Event added successfully',
+        insertedId: result.insertedId,
+      });
     });
 
+    // Endpoint to retrieve the event PDF
+    app.get('/event/:id/file', async (req, res) => {
+      const eventId = req.params.id;
+      
+      console.log('Received eventId:', eventId); // Log the eventId to verify it is correct
+      
+      if (!ObjectId.isValid(eventId)) {
+        return res.status(400).send({ message: 'Invalid eventId format' });
+      }
+    
+      try {
+        const objectId = new ObjectId(eventId);
+    
+        // Query the eventFiles.files collection to get the file metadata
+        const file = await db.collection('eventFiles.files').findOne({
+          'metadata.eventId': objectId
+        });
+    
+        if (!file) {
+          return res.status(404).send({ message: 'File not found' });
+        }
+    
+        // Initialize GridFSBucket for file download
+        const bucket = new GridFSBucket(db, { bucketName: 'eventFiles' });
+    
+        const downloadStream = bucket.openDownloadStream(file._id);
+    
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    
+        downloadStream.pipe(res);
+    
+        downloadStream.on('error', (error) => {
+          console.error('Error streaming the file:', error);
+          res.status(500).send({ message: 'Error streaming the file' });
+        });
+    
+        downloadStream.on('end', () => {
+          res.end();
+        });
+      } catch (error) {
+        console.error('Error fetching file:', error);
+        res.status(500).send({ message: 'Internal server error' });
+      }
+    });
+    
 
     // Auction
 
