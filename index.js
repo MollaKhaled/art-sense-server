@@ -89,7 +89,7 @@ async function run() {
     const bucket = new GridFSBucket(db, {
       bucketName: 'eventFiles', // name of the bucket (you can choose any name)
     });
- 
+
     const userCollection = client.db("artsenseDb").collection("users");
     const photoCollection = client.db("artsenseDb").collection("photo");
     const photoNavbarCollection = client.db("artsenseDb").collection("addNavbar");
@@ -291,9 +291,21 @@ async function run() {
 
     app.post('/exhibition', verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
-      const result = await exhibitionCollection.insertOne(newItem)
+    
+      // Extract numeric value from the formatted price string
+      const priceInNumber = parseFloat(newItem.price.replace('BDT', '').replace(',', '').trim());
+    
+      // Format the price to store it as a string with "BDT" prefix and two decimals
+      const formattedPrice = `BDT ${priceInNumber.toLocaleString('en-In', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    
+      // Store the numeric price for calculations and the formatted price for display
+      newItem.price = priceInNumber;  // Store the numeric price (e.g., 23000)
+      newItem.formattedPrice = formattedPrice;  // Store the formatted price (e.g., "BDT 23,000.00")
+    
+      const result = await exhibitionCollection.insertOne(newItem);
       res.send(result);
-    })
+    });
+    
 
     app.delete('/exhibition/:id', async (req, res) => {
       const id = req.params.id;
@@ -423,40 +435,38 @@ async function run() {
     // Endpoint to retrieve the event PDF
     app.get('/event/:id/file', async (req, res) => {
       const eventId = req.params.id;
-      
-      console.log('Received eventId:', eventId); // Log the eventId to verify it is correct
-      
+
       if (!ObjectId.isValid(eventId)) {
         return res.status(400).send({ message: 'Invalid eventId format' });
       }
-    
+
       try {
         const objectId = new ObjectId(eventId);
-    
+
         // Query the eventFiles.files collection to get the file metadata
         const file = await db.collection('eventFiles.files').findOne({
           'metadata.eventId': objectId
         });
-    
+
         if (!file) {
           return res.status(404).send({ message: 'File not found' });
         }
-    
+
         // Initialize GridFSBucket for file download
         const bucket = new GridFSBucket(db, { bucketName: 'eventFiles' });
-    
+
         const downloadStream = bucket.openDownloadStream(file._id);
-    
+
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
-    
+
         downloadStream.pipe(res);
-    
+
         downloadStream.on('error', (error) => {
           console.error('Error streaming the file:', error);
           res.status(500).send({ message: 'Error streaming the file' });
         });
-    
+
         downloadStream.on('end', () => {
           res.end();
         });
@@ -465,7 +475,7 @@ async function run() {
         res.status(500).send({ message: 'Internal server error' });
       }
     });
-    
+
 
     // Auction
 
