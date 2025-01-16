@@ -1,0 +1,48 @@
+[
+  {
+    "id":"0",
+    "name":"All Artists"
+  },
+
+  {
+    "id":"1",
+    "name":"Faizur Rahman Firoz"
+  },
+  {
+    "id":"2",
+    "name":"Shakirun Nahar Kanon"
+  },
+  {
+    "id":"3",
+    "name":"Golam Faruque Bebul"
+  },
+  {
+    "id":"4",
+    "name":"Tasmina Khan Majles"
+  },
+  {
+    "id":"5",
+    "name":"Al Akhir Sarker"
+  },
+  {
+    "id":"6",
+    "name":"Rejaul Karim"
+  },
+  {
+    "id":"7",
+    "name":"Mohammad Eunus"
+  },
+  {
+    "id":"8",
+    "name":"Ashraful Hasan"
+  },
+  {
+    "id":"9",
+    "name":"Abdus Shakoor Shah"
+  },
+  {
+    "id":"10",
+    "name":"Kamal Uddin"
+  }
+  
+]

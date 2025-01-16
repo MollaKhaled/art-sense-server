@@ -4,7 +4,7 @@ const cors = require('cors');
 const port = process.env.PORT || 3000;
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const { MongoClient, ServerApiVersion, ObjectId, Admin, Binary, GridFSBucket } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId, GridFSBucket } = require('mongodb');
 const nodemailer = require("nodemailer");
 const multer = require('multer');
 const path = require('path');
@@ -103,6 +103,8 @@ async function run() {
     const auctionNavbarCollection = client.db("artsenseDb").collection("auctionNavbar");
     const bidCollection = client.db("artsenseDb").collection("bid");
     const totalBidCollection = client.db("artsenseDb").collection("totalBid");
+    const totalArtistsCollection = client.db("artsenseDb").collection("artists");
+    const totalPhotoCollection = client.db("artsenseDb").collection("totalPhoto");
 
 
     app.post('/jwt', (req, res) => {
@@ -291,21 +293,21 @@ async function run() {
 
     app.post('/exhibition', verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
-    
+
       // Extract numeric value from the formatted price string
       const priceInNumber = parseFloat(newItem.price.replace('BDT', '').replace(',', '').trim());
-    
+
       // Format the price to store it as a string with "BDT" prefix and two decimals
       const formattedPrice = `BDT ${priceInNumber.toLocaleString('en-In', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    
+
       // Store the numeric price for calculations and the formatted price for display
       newItem.price = priceInNumber;  // Store the numeric price (e.g., 23000)
       newItem.formattedPrice = formattedPrice;  // Store the formatted price (e.g., "BDT 23,000.00")
-    
+
       const result = await exhibitionCollection.insertOne(newItem);
       res.send(result);
     });
-    
+
 
     app.delete('/exhibition/:id', async (req, res) => {
       const id = req.params.id;
@@ -613,6 +615,79 @@ async function run() {
       const result = await bidCollection.deleteOne(query);
       res.send(result);
     })
+
+    // all artists
+    app.get('/artists', async (req, res) => {
+      const result = await totalArtistsCollection.find().toArray();
+      res.send(result);
+    })
+    // total photo
+    app.get('/totalPhoto', async (req, res) => {
+      const result = await totalPhotoCollection.find().toArray();
+      res.send(result);
+    })
+
+    // single photo
+    app.get('/totalPhoto/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await totalPhotoCollection.findOne(query);
+      res.send(result);
+    });
+    // For specific artist
+    app.get('/artists/:id', async (req, res) => {
+      const id = req.params.id; // Get the artist ID from the request params
+
+      try {
+        if (id === '0') {
+          // If ID is 0, return all artists
+          const result = await totalPhotoCollection.find().toArray();
+          res.send(result);
+        } else {
+          // For specific artist, use MongoDB query
+          const result = await totalPhotoCollection.find({ artistId: id }).toArray();
+          if (!result.length) {
+            return res.status(404).send({ message: 'No photos found for this artist' });
+          }
+          res.send(result);
+        }
+      } catch (error) {
+        res.status(500).send({ message: 'Server error', error });
+      }
+    });
+
+
+    app.post('/totalPhoto', verifyJWT, verifyAdmin, async (req, res) => {
+      const newItem = req.body;
+
+      // Check if price exists and is a string before attempting to process it
+      let priceInNumber = null;
+      let formattedPrice = null;
+
+      if (newItem.price) {
+        // If price exists, process it
+        priceInNumber = parseFloat(newItem.price.toString().replace('BDT', '').replace(',', '').trim());
+        if (!isNaN(priceInNumber)) {
+          // Format the price for display
+          formattedPrice = `BDT ${priceInNumber.toLocaleString('en-In', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        } else {
+          priceInNumber = null; // Handle invalid price gracefully
+        }
+      }
+
+      // Store the numeric price and formatted price in the new item
+      newItem.price = priceInNumber; // Store as a number (null if no valid price)
+      newItem.formattedPrice = formattedPrice; // Store formatted price (null if no valid price)
+
+      try {
+        const result = await totalPhotoCollection.insertOne(newItem);
+        res.send(result);
+      } catch (error) {
+        console.error('Error inserting new item:', error);
+        res.status(500).send({ message: 'Failed to insert new item', error });
+      }
+    });
+
 
 
     // Send a ping to confirm a successful connection
