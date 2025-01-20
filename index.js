@@ -621,11 +621,57 @@ async function run() {
       const result = await totalArtistsCollection.find().toArray();
       res.send(result);
     })
+
+    app.post('/artists', async (req, res) => {
+      const artistItem = req.body;
+      const result = await totalArtistsCollection.insertOne(artistItem);
+      res.send(result);
+    })
+
+    app.delete('/artists/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await totalArtistsCollection.deleteOne(query);
+      res.send(result);
+    })
+
     // total photo
     app.get('/totalPhoto', async (req, res) => {
       const result = await totalPhotoCollection.find().toArray();
       res.send(result);
     })
+
+    // / Route for searching photos based on title or artist
+    app.get('/searchPhotos', async (req, res) => {
+      let searchQuery = req.query.search || '';
+      searchQuery = searchQuery.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&');
+      if (!searchQuery) {
+        return res.status(400).json({ error: 'Search query cannot be empty' });
+      }
+      try {
+        // Query MongoDB using regex for title and artist
+        const photos = await totalPhotoCollection.find({
+          $or: [
+            { title: { $regex: searchQuery, $options: 'i' } },
+            { artist: { $regex: searchQuery, $options: 'i' } }
+          ]
+        }).toArray();
+        if (photos.length === 0) {
+          return res.status(404).json({ message: 'No photos found matching your search' });
+        }
+
+        res.json(photos);  // Send filtered photos
+      } catch (error) {
+        console.error('Error during search:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+
+
+
+
+
+
 
     // single photo
     app.get('/totalPhoto/:id', async (req, res) => {
@@ -687,6 +733,13 @@ async function run() {
         res.status(500).send({ message: 'Failed to insert new item', error });
       }
     });
+
+    app.delete('/totalPhoto/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await totalPhotoCollection.deleteOne(query);
+      res.send(result);
+    })
 
 
 
