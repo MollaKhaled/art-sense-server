@@ -70,6 +70,7 @@ const sendEmail = (emailAddress, emailData) => {
   });
 }
 
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m4vej.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -145,7 +146,10 @@ async function run() {
       // welcome new user
       sendEmail(user?.email, {
         subject: "Welcome to artsense",
-        message: `Browse pictures and book them`
+        message:`<p>Dear,</p>
+            <p>Thank you for Signup artsense</p>
+            <p>Visit our website & Collect your Picture</p>
+            <p>Best regards,<br/>The Artsense Team</p>`,
       })
       res.send(result);
 
@@ -309,6 +313,7 @@ async function run() {
     });
 
 
+
     app.delete('/exhibition/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
@@ -344,19 +349,40 @@ async function run() {
       res.send(result);
     })
 
-    app.post('/bookedExhibition', async (req, res) => {
-      const { id } = req.body;
 
+    app.post('/bookedExhibition', async (req, res) => {
+      const { id, email } = req.body; // Extract 'email' from the request body
+    
       // Check if the item is already booked
       const existingBooking = await bookedExhibitionCollection.findOne({ id });
-
+    
       if (existingBooking) {
         return res.status(400).send({ error: 'This item is already booked.' });
       }
-
+    
       const result = await bookedExhibitionCollection.insertOne(req.body);
+      
+      // send email to guest
+      try {
+        sendEmail(email, { // Use the email variable here
+          subject: "Booking Confirmation for Artsense Exhibition",
+          message: `
+            <p>Dear,</p>
+            <p>Thank you for booking an item at our exhibition!</p>
+            <p>Your booking ID is <strong>${id}</strong>. Please retain this for your reference.</p>
+            <p>We look forward to your visit!</p>
+            <p>Best regards,<br/>The Artsense Team</p>
+          `,
+        });
+      } catch (error) {
+        console.error('Error sending email:', error);
+        return res.status(500).send({ error: 'Failed to send email' });
+      }
+    
       res.send(result);
     });
+    
+
 
     // New endpoint to check the booking status
     app.get('/bookedExhibition/:id', async (req, res) => {
@@ -589,13 +615,17 @@ async function run() {
       }
       // send email to guest
       sendEmail(email, {
-        subject: "Booking Successfully!",
-        message: `Dear Sir/Mam ,<br/> Bid Successful! Thank you for bidding with us. Your reservation has been confirmed. We look forward to serving you soon!`,
+        subject: "Bid Confirmation for Artsense Auction",
+        message: `
+            <p>Dear,</p>
+            <p>Thank you for bidding an item at our Auction!</p>
+            <p>Your booking ID is <strong>${lotId}</strong>. Please retain this for your reference.</p>
+            <p>We look forward to your visit!</p>
+            <p>Best regards,<br/>The Artsense Team</p>`,
       });
 
-
-
     });
+
 
     app.get('/bid/:lotId/bid-count', async (req, res) => {
       const { lotId } = req.params;  // The lotId passed in the URL
@@ -641,36 +671,86 @@ async function run() {
       res.send(result);
     })
 
-    // / Route for searching photos based on title or artist
-    app.get('/searchPhotos', async (req, res) => {
-      let searchQuery = req.query.search || '';
-      searchQuery = searchQuery.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&');
-      if (!searchQuery) {
-        return res.status(400).json({ error: 'Search query cannot be empty' });
-      }
+    app.get('/prices', async (req, res) => {
       try {
-        // Query MongoDB using regex for title and artist
-        const photos = await totalPhotoCollection.find({
-          $or: [
-            { title: { $regex: searchQuery, $options: 'i' } },
-            { artist: { $regex: searchQuery, $options: 'i' } }
-          ]
-        }).toArray();
-        if (photos.length === 0) {
-          return res.status(404).json({ message: 'No photos found matching your search' });
-        }
-
-        res.json(photos);  // Send filtered photos
+        const prices = await totalPhotoCollection.aggregate([
+          { $group: { _id: "$formattedPrice" } }  // Group by formattedPrice to get distinct values
+        ]).toArray();
+        const priceList = prices.map(item => item._id);  // Extract distinct prices
+        res.json(priceList);
       } catch (error) {
-        console.error('Error during search:', error);
+        console.error('Error fetching prices:', error);
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
 
 
+    // Route for fetching distinct years
+    app.get('/years', async (req, res) => {
+      try {
+        const years = await totalPhotoCollection.aggregate([
+          { $group: { _id: "$year" } }  // Group by year to get distinct values
+        ]).toArray();
+        const yearList = years.map(item => item._id);  // Extract distinct years
+        res.json(yearList);
+      } catch (error) {
+        console.error('Error fetching years:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
 
-
-
+    // Route for searching photos based on title, artist, price, and year
+    
+    app.get('/searchPhotos', async (req, res) => {
+      let { search, artist, price, year } = req.query;
+    
+      search = search ? search.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&') : '';  // Sanitize search query
+    
+      if (!search && !artist && !price && !year) {
+        return res.status(400).json({ error: 'At least one search parameter (search, artist, price, or year) must be provided' });
+      }
+    
+      let filters = {
+        $or: [
+          { title: { $regex: search, $options: 'i' } },
+          { artist: { $regex: search, $options: 'i' } }
+        ]
+      };
+    
+      if (artist) {
+        filters.artist = { $regex: artist, $options: 'i' }; // Filter by artist
+      }
+    
+      if (price) {
+        // Remove currency symbol and commas from price, then convert to a number
+        const priceNumber = Number(price.replace(/[^\d.-]/g, ''));
+        if (isNaN(priceNumber)) {
+          return res.status(400).json({ error: 'Invalid price format' });
+        }
+        filters.price = priceNumber;  // Filter by exact price
+      }
+    
+      if (year) {
+        const yearNumber = Number(year);
+        if (isNaN(yearNumber)) {
+          return res.status(400).json({ error: 'Invalid year format' });
+        }
+        filters.year = yearNumber;  // Filter by year (ensure it's treated as a number)
+      }
+    
+      try {
+        const photos = await totalPhotoCollection.find(filters).toArray();
+        if (photos.length === 0) {
+          return res.status(404).json({ message: 'No photos found matching your search' });
+        }
+    
+        res.json(photos);
+      } catch (error) {
+        console.error('Error during search:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+    
 
 
     // single photo
