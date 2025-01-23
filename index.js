@@ -99,6 +99,7 @@ async function run() {
     const exhibitionCollection = client.db("artsenseDb").collection("exhibition");
     const bookedExhibitionCollection = client.db("artsenseDb").collection("bookedExhibition");
     const eventCollection = client.db("artsenseDb").collection("event");
+    const serviceCollection = client.db("artsenseDb").collection("service");
     const auctionCollection = client.db("artsenseDb").collection("auction");
     const exhibitionNavbarCollection = client.db("artsenseDb").collection("exhibitionNavbar");
     const auctionNavbarCollection = client.db("artsenseDb").collection("auctionNavbar");
@@ -504,6 +505,24 @@ async function run() {
       }
     });
 
+    // service
+    app.get('/service', async (req, res) => {
+      const result = await serviceCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.post('/service', async (req, res) => {
+      const service = req.body;
+      const result = await serviceCollection.insertOne(service);
+      res.send(result);
+    })
+
+    app.delete('/service/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await serviceCollection.deleteOne(query);
+      res.send(result);
+    })
 
     // Auction
 
