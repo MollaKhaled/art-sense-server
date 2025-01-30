@@ -671,11 +671,16 @@ async function run() {
       res.send(result);
     })
 
-    app.post('/artists', async (req, res) => {
-      const artistItem = req.body;
-      const result = await totalArtistsCollection.insertOne(artistItem);
-      res.send(result);
-    })
+    app.get('/artists', async (req, res) => {
+      try {
+        const artists = await totalArtistsCollection.find().toArray();
+        res.send(artists);
+      } catch (error) {
+        console.error("Error fetching artists:", error);
+        res.status(500).send({ message: "Failed to fetch artists" });
+      }
+    });
+    
 
     app.delete('/artists/:id', async (req, res) => {
       const id = req.params.id;
@@ -685,11 +690,30 @@ async function run() {
     })
 
     // total photo
-    app.get('/totalPhoto', async (req, res) => {
-      const result = await totalPhotoCollection.find().toArray();
-      res.send(result);
-    })
-
+    app.get('/artists/:id', async (req, res) => {
+      const artistId= req.params.id; // Get the artist ID from the request params
+      console.log("Received artistId:", artistId); // Log the received artistId
+      
+      try {
+        // Check for artistId '0' to return all artists (this is the fallback)
+        if (artistId === '0') {
+          const result = await totalPhotoCollection.find().toArray();
+          res.send(result);
+        } else {
+          // Find photos for specific artist by matching artistId directly
+          const result = await totalPhotoCollection.find({ artistId: artistId}).toArray();
+          
+          if (result.length === 0) {
+            return res.status(404).send({ message: 'No photos found for this artist' });
+          }
+          
+          res.send(result); // Send the matching photos
+        }
+      } catch (error) {
+        res.status(500).send({ message: 'Server error', error });
+      }
+    });
+    
     app.get('/prices', async (req, res) => {
       try {
         const prices = await totalPhotoCollection.aggregate([
@@ -782,16 +806,17 @@ async function run() {
     // For specific artist
     app.get('/artists/:id', async (req, res) => {
       const id = req.params.id; // Get the artist ID from the request params
-
+      console.log("Received artistId:", id); // Log the received artistId
+      
       try {
+        // Check for artistId 0 to return all artists
         if (id === '0') {
-          // If ID is 0, return all artists
           const result = await totalPhotoCollection.find().toArray();
           res.send(result);
         } else {
-          // For specific artist, use MongoDB query
+          // Find specific artist by matching artistId as a string
           const result = await totalPhotoCollection.find({ artistId: id }).toArray();
-          if (!result.length) {
+          if (result.length === 0) {
             return res.status(404).send({ message: 'No photos found for this artist' });
           }
           res.send(result);
@@ -800,7 +825,12 @@ async function run() {
         res.status(500).send({ message: 'Server error', error });
       }
     });
-
+    
+    
+    
+    
+    
+    
 
     app.post('/totalPhoto', verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
