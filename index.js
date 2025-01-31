@@ -680,6 +680,12 @@ async function run() {
         res.status(500).send({ message: "Failed to fetch artists" });
       }
     });
+
+    app.post('/artists', async (req, res) => {
+      const service = req.body;
+      const result = await totalArtistsCollection.insertOne(service);
+      res.send(result);
+    })
     
 
     app.delete('/artists/:id', async (req, res) => {
