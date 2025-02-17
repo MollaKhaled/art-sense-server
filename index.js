@@ -993,6 +993,12 @@ async function run() {
       }
     });
 
+    // get all photos
+    app.get('/totalPhoto', async (req, res) => {
+      const result = await totalPhotoCollection.find().toArray();
+      res.send(result);
+    })
+
 
 
     // single photo
