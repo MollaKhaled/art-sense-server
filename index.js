@@ -23,7 +23,7 @@ const expressServer = http.createServer(app);
 // Initialize Socket.IO with the HTTP server
 let io = new Server(expressServer, {
   cors: {
-    origin: "http://localhost:5173", // Replace with your frontend URL
+    origin: "https://artsense.netlify.app/", // Replace with your frontend URL
     methods: ["GET", "POST"]
   }
 });
@@ -41,11 +41,6 @@ io.on("connection", (socket) => {
 
 });
 
-
-
-
-
-
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
   if (!authorization) {
@@ -61,6 +56,9 @@ const verifyJWT = (req, res, next) => {
     next();
   })
 }
+
+console.log(process.env.TRANSPORTER_EMAIL);
+console.log(process.env.TRANSPORTER_PASS);
 
 // send email
 const sendEmail = (emailAddress, emailData) => {
@@ -99,6 +97,7 @@ const sendEmail = (emailAddress, emailData) => {
     }
   });
 }
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.m4vej.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -144,36 +143,36 @@ async function run() {
       try {
         await session.withTransaction(async () => {
           const { bidAmount, email, lotId } = req.body;
-    
+
           // Validate the input
           if (!bidAmount || !email || !lotId) {
             return res.status(400).send({ message: "Invalid bid data" });
           }
-    
+
           // Clean the bidAmount string and convert it to a number (strip out non-numeric characters)
           const numericBidAmount = parseFloat(bidAmount.replace(/[^0-9.-]+/g, ""));
           if (isNaN(numericBidAmount) || numericBidAmount <= 0) {
             return res.status(400).send({ message: "Invalid bid amount" });
           }
-    
+
           // Check if the new bid is higher than the current highest bid
           const currentBid = await totalBidCollection.findOne({ lotId }, { session });
-    
+
           // Ensure currentHighestBid is a string (with the currency and commas) before performing any operations
           const currentHighestBidStr = currentBid?.currentHighestBid ? currentBid.currentHighestBid.toString() : '0';
-    
+
           // Compare the bid amounts (numeric value without the currency symbols)
           if (currentBid && numericBidAmount <= parseFloat(currentHighestBidStr.replace(/[^0-9.-]+/g, ""))) {
             return res.status(400).send({ message: "Your bid must be higher than the current highest bid." });
           }
-    
+
           // Check if this user has already placed the same bid on this lot
           const existingBid = await bidCollection.findOne({ lotId, email }, { session });
-    
+
           if (existingBid?.bidAmount === numericBidAmount) {
             return res.status(400).send({ message: "You have already placed this bid." });
           }
-    
+
           // Insert bid details into bidCollection
           const insertResult = await bidCollection.insertOne(
             {
@@ -184,11 +183,11 @@ async function run() {
             },
             { session }
           );
-    
+
           if (!insertResult.insertedId) {
             return res.status(500).send({ message: "Failed to place bid" });
           }
-    
+
           // Update the total bid collection with a new highest bid and bid count
           await totalBidCollection.updateOne(
             { lotId },
@@ -198,7 +197,7 @@ async function run() {
             },
             { upsert: true, session }
           );
-    
+
           // If this is the first bid from the user, increase uniqueBidders count
           if (!existingBid) {
             await totalBidCollection.updateOne(
@@ -207,7 +206,7 @@ async function run() {
               { session }
             );
           }
-    
+
           // Emit the new bid to all connected clients using Socket.IO
           io.emit('newBid', {
             lotId,
@@ -215,7 +214,7 @@ async function run() {
             email,
             createdAt: new Date(),
           });
-    
+
           // Send bid confirmation email
           try {
             sendEmail(email, {
@@ -232,7 +231,7 @@ async function run() {
           } catch (emailError) {
             console.error("Email sending failed:", emailError);
           }
-    
+
           // Send success response
           res.send({
             message: "Bid placed successfully",
@@ -247,33 +246,33 @@ async function run() {
       }
     });
 
-    app.get('/totalBid',  async (req, res) => {
+    app.get('/totalBid', async (req, res) => {
       const result = await totalBidCollection.find().toArray();
       res.send(result);
     })
 
-     // load single data
-    
+    // load single data
 
-     app.get('/totalBid/:lotId', async (req, res) => {
+
+    app.get('/totalBid/:lotId', async (req, res) => {
       try {
-          const { lotId } = req.params;
-  
-          // Query by lotId (stored as a string in MongoDB)
-          const query = { lotId: lotId };
-          const result = await totalBidCollection.findOne(query);
-  
-          if (!result) {
-            return res.status(404).send({ currentHighestBid: "No bids yet" });
-          }
-  
-          res.json(result);
+        const { lotId } = req.params;
+
+        // Query by lotId (stored as a string in MongoDB)
+        const query = { lotId: lotId };
+        const result = await totalBidCollection.findOne(query);
+
+        if (!result) {
+          return res.status(404).send({ currentHighestBid: "No bids yet" });
+        }
+
+        res.json(result);
       } catch (error) {
-          res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: "Internal Server Error" });
       }
-  });
-  
-    
+    });
+
+
 
 
     app.post('/jwt', (req, res) => {
@@ -524,7 +523,7 @@ async function run() {
 
 
     app.post('/bookedExhibition', async (req, res) => {
-      const { id, email } = req.body; // Extract 'email' from the request body
+      const { id, email,grandTotal } = req.body; // Extract 'email' from the request body
 
       // Check if the item is already booked
       const existingBooking = await bookedExhibitionCollection.findOne({ id });
@@ -542,8 +541,7 @@ async function run() {
           message: `
             <p>Dear,</p>
             <p>Thank you for booking an item at our exhibition!</p>
-            <p>Your booking ID is <strong>${id}</strong>. Please retain this for your reference.</p>
-            <p>We look forward to your visit!</p>
+            <p>Your booking ID is <strong>${id}</strong>. Your booked amount: <strong>${grandTotal}</strong></p>
             <p>Best regards,<br/>The Artsense Team</p>
           `,
         });
@@ -752,93 +750,6 @@ async function run() {
       const result = await bidCollection.find().toArray();
       res.send(result);
     })
-
-    app.post('/bid', async (req, res) => {
-      const { bidAmount, email, lotId } = req.body;
-
-      // Validate the input
-      if (!bidAmount || !email || !lotId) {
-        return res.status(400).send({ message: "Invalid bid data" });
-      }
-
-      // Clean the bidAmount string and convert it to a number (strip out non-numeric characters)
-      const numericBidAmount = parseFloat(bidAmount.replace(/[^0-9.-]+/g, "")); // Removing non-numeric characters
-
-      if (isNaN(numericBidAmount)) {
-        return res.status(400).send({ message: "Invalid bid amount" });
-      }
-
-      const bidData = {
-        lotId,
-        bidAmount: numericBidAmount, // Store the numeric bidAmount
-        email,
-        createdAt: new Date(),
-      };
-
-      try {
-        // Check if the user has already placed a bid on this lot (using lotId and email)
-        const existingBid = await bidCollection.findOne({ lotId, email });
-
-        if (!existingBid) {
-          // Increment unique bidder count only if it's a new bidder
-          await totalBidCollection.updateOne(
-            { lotId },
-            { $inc: { uniqueBidders: 1 } }, // Increment unique bidder count
-            { upsert: true }
-          );
-        }
-
-        // Insert bid details into bidCollection
-        const insertResult = await bidCollection.insertOne(bidData);
-
-        if (insertResult.insertedId) {
-          // Increment the placeBidCount for the auction and update the highest bid
-          await totalBidCollection.updateOne(
-            { lotId },
-            {
-              $inc: { placeBidCount: 1 }, // Increment the bid count
-              $set: { currentHighestBid: numericBidAmount } // Update the current highest bid
-            },
-            { upsert: true }
-          );
-
-          // Emit the new bid to all connected clients using Socket.IO
-          io.emit('newBid', {
-            lotId,
-            bidAmount: numericBidAmount,
-            email,
-            createdAt: bidData.createdAt
-          });
-
-          // Send response back to the client
-          res.send({
-            message: "Bid placed successfully",
-            insertedId: insertResult.insertedId,
-          });
-        } else {
-          res.status(500).send({ message: "Failed to place bid" });
-        }
-      } catch (error) {
-        console.error("Error placing bid:", error);
-        res.status(500).send({ message: "Server error" });
-      }
-
-      // Send email to the user
-      sendEmail(email, {
-        subject: "Bid Confirmation for Artsense Auction",
-        message: `
-            <p>Dear,</p>
-            <p>Thank you for bidding on an item at our Auction!</p>
-            <p>Your booking ID is <strong>${lotId}</strong>. Please retain this for your reference.</p>
-            <p>We look forward to your visit!</p>
-            <p>Best regards,<br/>The Artsense Team</p>`,
-      });
-    });
-
-
-
-
-
     app.get('/bid/:lotId/bid-count', async (req, res) => {
       const { lotId } = req.params;  // The lotId passed in the URL
 
@@ -866,11 +777,10 @@ async function run() {
 
     app.get('/artists', async (req, res) => {
       try {
-        const artists = await totalArtistsCollection.find().toArray();
+        const artists = await totalArtistsCollection.find().sort({ artist: 1 }).toArray(); // Sort by 'artist' field
         res.send(artists);
       } catch (error) {
-        console.error("Error fetching artists:", error);
-        res.status(500).send({ message: "Failed to fetch artists" });
+        res.status(500).send({ message: 'Server error', error });
       }
     });
 
@@ -888,7 +798,7 @@ async function run() {
       res.send(result);
     })
 
-    // total photo
+    // search  photo by artist
     app.get('/artists/:id', async (req, res) => {
       const artistId = req.params.id; // Get the artist ID from the request params
       console.log("Received artistId:", artistId); // Log the received artistId
@@ -998,44 +908,6 @@ async function run() {
       const result = await totalPhotoCollection.find().toArray();
       res.send(result);
     })
-
-
-
-    // single photo
-    app.get('/totalPhoto/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await totalPhotoCollection.findOne(query);
-      res.send(result);
-    });
-    // For specific artist
-    app.get('/artists/:id', async (req, res) => {
-      const id = req.params.id; // Get the artist ID from the request params
-      console.log("Received artistId:", id); // Log the received artistId
-
-      try {
-        // Check for artistId 0 to return all artists
-        if (id === '0') {
-          const result = await totalPhotoCollection.find().toArray();
-          res.send(result);
-        } else {
-          // Find specific artist by matching artistId as a string
-          const result = await totalPhotoCollection.find({ artistId: id }).toArray();
-          if (result.length === 0) {
-            return res.status(404).send({ message: 'No photos found for this artist' });
-          }
-          res.send(result);
-        }
-      } catch (error) {
-        res.status(500).send({ message: 'Server error', error });
-      }
-    });
-
-
-
-
-
-
 
     app.post('/totalPhoto', verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
