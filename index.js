@@ -932,7 +932,8 @@ async function run() {
           { $group: { _id: "$media" } }  // Group by media type to get distinct values
         ]).toArray();
     
-        const mediaList = media.map(item => item._id).sort((a, b) => a.localeCompare(b));  // Extract and sort alphabetically
+        // Remove duplicates using Set, then sort alphabetically
+        const mediaList = [...new Set(media.map(item => item._id))].sort((a, b) => a.localeCompare(b));
     
         res.json(mediaList);
       } catch (error) {
@@ -940,6 +941,7 @@ async function run() {
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
+    
     
 
     app.get('/prices', async (req, res) => {
@@ -1132,14 +1134,15 @@ async function run() {
           { $group: { _id: "$media" } }  // Group by media type to get distinct values
         ]).toArray();
     
-        const mediaList = media.map(item => item._id).sort((a, b) => a.localeCompare(b));  // Extract and sort alphabetically
-    
+        const mediaList = [...new Set(media.map(item => item._id))].sort((a, b) => a.localeCompare(b));  // Extract and sort alphabetically
+        
         res.json(mediaList);
       } catch (error) {
         console.error('Error fetching media:', error);
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
+    
 
     app.get('/exhibitionPrices', async (req, res) => {
       try {
@@ -1273,8 +1276,8 @@ async function run() {
           { $group: { _id: "$media" } }  // Group by media type to get distinct values
         ]).toArray();
     
-        const mediaList = media.map(item => item._id).sort((a, b) => a.localeCompare(b));  // Extract and sort alphabetically
-    
+        const mediaList = [...new Set(media.map(item => item._id))].sort((a, b) => a.localeCompare(b));  // Extract and sort alphabetically
+        
         res.json(mediaList);
       } catch (error) {
         console.error('Error fetching media:', error);
