@@ -850,7 +850,6 @@ async function run() {
       const result = await totalBidCollection.find().toArray();
       res.send(result);
     })
-
     // load single data
     app.get('/totalBid/:lotId', async (req, res) => {
       try {
@@ -886,14 +885,11 @@ async function run() {
         res.status(500).send({ message: 'Server error', error });
       }
     });
-
     app.post('/artists', async (req, res) => {
       const service = req.body;
       const result = await totalArtistsCollection.insertOne(service);
       res.send(result);
     })
-
-
     app.delete('/artists/:id', async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
@@ -902,78 +898,6 @@ async function run() {
     })
 
     // search  photo by artist
-    app.get('/artists/:id', async (req, res) => {
-      const artistId = req.params.id; // Get the artist ID from the request params
-      console.log("Received artistId:", artistId); // Log the received artistId
-
-      try {
-        // Check for artistId '0' to return all artists (this is the fallback)
-        if (artistId === '0') {
-          const result = await totalPhotoCollection.find().toArray();
-          res.send(result);
-        } else {
-          // Find photos for specific artist by matching artistId directly
-          const result = await totalPhotoCollection.find({ artistId: artistId }).toArray();
-
-          if (result.length === 0) {
-            return res.status(404).send({ message: 'No photos found for this artist' });
-          }
-
-          res.send(result); // Send the matching photos
-        }
-      } catch (error) {
-        res.status(500).send({ message: 'Server error', error });
-      }
-    });
-
-    app.get('/media', async (req, res) => {
-      try {
-        const media = await totalPhotoCollection.aggregate([
-          { $group: { _id: "$media" } }  // Group by media type to get distinct values
-        ]).toArray();
-    
-        // Remove duplicates using Set, then sort alphabetically
-        const mediaList = [...new Set(media.map(item => item._id))].sort((a, b) => a.localeCompare(b));
-    
-        res.json(mediaList);
-      } catch (error) {
-        console.error('Error fetching media:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
-    });
-    
-    
-
-    app.get('/prices', async (req, res) => {
-      try {
-        const prices = await totalPhotoCollection.aggregate([
-          { $group: { _id: "$formattedPrice" } }  // Group by formattedPrice to get distinct values
-        ]).toArray();
-        const priceList = prices.map(item => item._id);  // Extract distinct prices
-        res.json(priceList);
-      } catch (error) {
-        console.error('Error fetching prices:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
-    });
-
-
-    // Route for fetching distinct years
-    app.get('/years', async (req, res) => {
-      try {
-        const years = await totalPhotoCollection.aggregate([
-          { $group: { _id: "$year" } }  // Group by year to get distinct values
-        ]).toArray();
-        const yearList = years.map(item => item._id);  // Extract distinct years
-        res.json(yearList);
-      } catch (error) {
-        console.error('Error fetching years:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
-    });
-
-    // Route for searching photos based on title, artist, price, and year
-
     app.get('/searchPhotos', async (req, res) => {
       let { search, artist, price, year, media } = req.query;
     
@@ -1015,7 +939,7 @@ async function run() {
       }
     
       try {
-        const photos = await totalPhotoCollection.find(filters).toArray();
+        const photos = await photoCollection.find(filters).toArray();
         if (photos.length === 0) {
           return res.status(404).json({ message: 'No photos found matching your search' });
         }
@@ -1026,10 +950,88 @@ async function run() {
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
+    app.get('/artworkArtists', async (req, res) => {
+      try {
+        const artists = await photoCollection
+          .aggregate([
+            {
+              $group: {
+                _id: "$artistId", // Group by artistId to ensure uniqueness
+                artist: { $first: "$artist" } // Get the artist name from the first document in each group
+              }
+            },
+            { $sort: { _id: 1 } } // Sort by artistId (which is the _id after grouping)
+          ])
+          .toArray();
+
+        res.send(artists);
+      } catch (error) {
+        res.status(500).send({ message: 'Server error', error });
+      }
+    });
+    app.get('/artworkArtists/:id', async (req, res) => {
+      const artistId = req.params.id; // Get the artist ID from the request params
+      console.log("Received artistId:", artistId); // Log the received artistId
+
+      try {
+        // Check for artistId '0' to return all artists (this is the fallback)
+        if (artistId === '0') {
+          const result = await photoCollection.find().toArray();
+          res.send(result);
+        } else {
+          // Find photos for specific artist by matching artistId directly
+          const result = await photoCollection.find({ artistId: artistId }).toArray();
+
+          if (result.length === 0) {
+            return res.status(404).send({ message: 'No photos found for this artist' });
+          }
+
+          res.send(result); // Send the matching photos
+        }
+      } catch (error) {
+        res.status(500).send({ message: 'Server error', error });
+      }
+    });
+    app.get('/media', async (req, res) => {
+      try {
+        const media = await photoCollection.aggregate([
+          { $group: { _id: "$media" } }  // Group by media type to get distinct values
+        ]).toArray();
     
-
+        // Remove duplicates using Set, then sort alphabetically
+        const mediaList = [...new Set(media.map(item => item._id))].sort((a, b) => a.localeCompare(b));
+    
+        res.json(mediaList);
+      } catch (error) {
+        console.error('Error fetching media:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+    app.get('/prices', async (req, res) => {
+      try {
+        const prices = await photoCollection.aggregate([
+          { $group: { _id: "$formattedPrice" } }  // Group by formattedPrice to get distinct values
+        ]).toArray();
+        const priceList = prices.map(item => item._id);  // Extract distinct prices
+        res.json(priceList);
+      } catch (error) {
+        console.error('Error fetching prices:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
+    app.get('/years', async (req, res) => {
+      try {
+        const years = await photoCollection.aggregate([
+          { $group: { _id: "$year" } }  // Group by year to get distinct values
+        ]).toArray();
+        const yearList = years.map(item => item._id);  // Extract distinct years
+        res.json(yearList);
+      } catch (error) {
+        console.error('Error fetching years:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    });
     // for exhibition search 
-
     app.get('/exhibitionSearchPhotos', async (req, res) => {
       let { search, artist, price, year, media } = req.query;
     
@@ -1082,7 +1084,6 @@ async function run() {
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
-    
     // search  photo by artist
     app.get('/exhibitionArtists', async (req, res) => {
       try {
@@ -1103,7 +1104,6 @@ async function run() {
         res.status(500).send({ message: 'Server error', error });
       }
     });
-
     app.get('/exhibitionArtists/:id', async (req, res) => {
       const artistId = req.params.id; // Get the artist ID from the request params
       console.log("Received artistId:", artistId); // Log the received artistId
@@ -1127,7 +1127,6 @@ async function run() {
         res.status(500).send({ message: 'Server error', error });
       }
     });
-
     app.get('/exhibitionMedia', async (req, res) => {
       try {
         const media = await exhibitionCollection.aggregate([
@@ -1142,8 +1141,6 @@ async function run() {
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
-    
-
     app.get('/exhibitionPrices', async (req, res) => {
       try {
         const prices = await exhibitionCollection.aggregate([
