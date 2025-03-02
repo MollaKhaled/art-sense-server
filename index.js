@@ -897,108 +897,64 @@ async function run() {
       res.send(result);
     })
 
-    // search  photo by artist
-    // app.get('/searchPhotos', async (req, res) => {
-    //   let { search, artist, price, year, media } = req.query;
-    
-    //   search = search ? search.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&') : ''; // Sanitize search query
-    
-    //   if (!search && !artist && !price && !year && !media) {
-    //     return res.status(400).json({ error: 'At least one search parameter (search, artist, price, year, or media) must be provided' });
-    //   }
-    
-    //   let filters = {
-    //     $or: [
-    //       { title: { $regex: search, $options: 'i' } },
-    //       { artist: { $regex: search, $options: 'i' } }
-    //     ]
-    //   };
-    
-    //   if (artist) {
-    //     filters.artist = { $regex: artist, $options: 'i' }; // Filter by artist
-    //   }
-    
-    //   if (price) {
-    //     const priceNumber = Number(price.replace(/[^\d.-]/g, '')); // Convert price to a number
-    //     if (isNaN(priceNumber)) {
-    //       return res.status(400).json({ error: 'Invalid price format' });
-    //     }
-    //     filters.price = priceNumber; // Filter by exact price
-    //   }
-    
-    //   if (year) {
-    //     const yearNumber = Number(year);
-    //     if (isNaN(yearNumber)) {
-    //       return res.status(400).json({ error: 'Invalid year format' });
-    //     }
-    //     filters.year = yearNumber; // Filter by year (as a number)
-    //   }
-    
-    //   if (media) {
-    //     filters.media = { $regex: media, $options: 'i' }; // Case-insensitive filter for media type
-    //   }
-    
-    //   try {
-    //     const photos = await photoCollection.find(filters).toArray();
-    //     if (photos.length === 0) {
-    //       return res.status(404).json({ message: 'No photos found matching your search' });
-    //     }
-    
-    //     res.json(photos);
-    //   } catch (error) {
-    //     console.error('Error during search:', error);
-    //     res.status(500).json({ error: 'Internal Server Error' });
-    //   }
-    // });
- 
     // Add this new route for path parameter search
+
     app.get('/searchPhotos', async (req, res) => {
       try {
-        const { query, price, year, media } = req.query; // Extract query parameters
+        const { query, price, year, media } = req.query;
         
-        if (!query) {
-          return res.status(400).json({ error: 'Search query is required' });
-        }
+        // Initialize filter object
+        const filter = {};
     
-        // Base search filter for all collections
-        const searchFilter = {
-          $or: [
+        // Add search query if provided
+        if (query) {
+          filter.$or = [
             { title: { $regex: query, $options: 'i' } },
             { artist: { $regex: query, $options: 'i' } }
-          ]
-        };
-    
-        // Additional Filters **only for photoCollection**
-        const photoFilter = { ...searchFilter };
-    
-        if (price) {
-          const priceNumber = Number(price.replace(/[^\d.-]/g, ''));
-          if (isNaN(priceNumber)) {
-            return res.status(400).json({ error: 'Invalid price format' });
-          }
-          photoFilter.price = priceNumber; // Apply price filter only for photos
+          ];
         }
     
-        if (year) {
-          const yearNumber = Number(year);
-          if (isNaN(yearNumber)) {
-            return res.status(400).json({ error: 'Invalid year format' });
-          }
-          photoFilter.year = yearNumber; // Apply year filter only for photos
-        }
-    
+        // Add media filter if provided
         if (media) {
-          photoFilter.media = { $regex: media, $options: 'i' }; // Apply media filter only for photos
+          filter.media = { $regex: decodeURIComponent(media), $options: 'i' };
         }
     
-        // Run parallel queries
-        const [photoResults, auctionResults, exhibitionResults] = await Promise.all([
-          photoCollection.find(photoFilter).toArray(), // Apply additional filters
-          auctionCollection.find(searchFilter).toArray(), // Only title & artist filter
-          exhibitionCollection.find(searchFilter).toArray() // Only title & artist filter
-        ]);
+        // Add year filter if provided
+        if (year) {
+          filter.year = parseInt(year);
+        }
     
-        // Combine results with type tags
+        // Add price filter if provided
+        if (price) {
+          // Remove 'BDT' and commas, then convert to number
+          const cleanPrice = parseFloat(price.replace(/[^0-9.-]+/g, ''));
+          if (!isNaN(cleanPrice)) {
+            filter.price = cleanPrice;
+          }
+        }
+    
+        console.log('Search filter:', filter); // Debug log
+    
+        // Execute the query
+        const photoResults = await photoCollection.find(filter).toArray();
+        
+        // Only search other collections if there's a text query
+        let auctionResults = [], exhibitionResults = [];
+        if (query) {
+          const textFilter = {
+            $or: [
+              { title: { $regex: query, $options: 'i' } },
+              { artist: { $regex: query, $options: 'i' } }
+            ]
+          };
+          
+          [auctionResults, exhibitionResults] = await Promise.all([
+            auctionCollection.find(textFilter).toArray(),
+            exhibitionCollection.find(textFilter).toArray()
+          ]);
+        }
+    
+        // Combine results
         const combinedResults = [
           ...photoResults.map(item => ({ ...item, type: "photo" })),
           ...auctionResults.map(item => ({ ...item, type: "auction" })),
@@ -1006,7 +962,10 @@ async function run() {
         ];
     
         if (combinedResults.length === 0) {
-          return res.status(404).json({ message: `No results found for "${query}"` });
+          const filterDesc = query || media || year || price || 'all items';
+          return res.status(404).json({ 
+            message: `No results found for ${filterDesc}` 
+          });
         }
     
         res.json(combinedResults);
@@ -1016,6 +975,8 @@ async function run() {
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
+    
+    
     app.get('/artworkArtists', async (req, res) => {
       try {
         const artists = await photoCollection
