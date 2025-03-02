@@ -898,55 +898,121 @@ async function run() {
     })
 
     // search  photo by artist
+    // app.get('/searchPhotos', async (req, res) => {
+    //   let { search, artist, price, year, media } = req.query;
+    
+    //   search = search ? search.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&') : ''; // Sanitize search query
+    
+    //   if (!search && !artist && !price && !year && !media) {
+    //     return res.status(400).json({ error: 'At least one search parameter (search, artist, price, year, or media) must be provided' });
+    //   }
+    
+    //   let filters = {
+    //     $or: [
+    //       { title: { $regex: search, $options: 'i' } },
+    //       { artist: { $regex: search, $options: 'i' } }
+    //     ]
+    //   };
+    
+    //   if (artist) {
+    //     filters.artist = { $regex: artist, $options: 'i' }; // Filter by artist
+    //   }
+    
+    //   if (price) {
+    //     const priceNumber = Number(price.replace(/[^\d.-]/g, '')); // Convert price to a number
+    //     if (isNaN(priceNumber)) {
+    //       return res.status(400).json({ error: 'Invalid price format' });
+    //     }
+    //     filters.price = priceNumber; // Filter by exact price
+    //   }
+    
+    //   if (year) {
+    //     const yearNumber = Number(year);
+    //     if (isNaN(yearNumber)) {
+    //       return res.status(400).json({ error: 'Invalid year format' });
+    //     }
+    //     filters.year = yearNumber; // Filter by year (as a number)
+    //   }
+    
+    //   if (media) {
+    //     filters.media = { $regex: media, $options: 'i' }; // Case-insensitive filter for media type
+    //   }
+    
+    //   try {
+    //     const photos = await photoCollection.find(filters).toArray();
+    //     if (photos.length === 0) {
+    //       return res.status(404).json({ message: 'No photos found matching your search' });
+    //     }
+    
+    //     res.json(photos);
+    //   } catch (error) {
+    //     console.error('Error during search:', error);
+    //     res.status(500).json({ error: 'Internal Server Error' });
+    //   }
+    // });
+ 
+    // Add this new route for path parameter search
     app.get('/searchPhotos', async (req, res) => {
-      let { search, artist, price, year, media } = req.query;
-    
-      search = search ? search.trim().replace(/[.*+?^=!:${}()|\[\]\/\\]/g, '\\$&') : ''; // Sanitize search query
-    
-      if (!search && !artist && !price && !year && !media) {
-        return res.status(400).json({ error: 'At least one search parameter (search, artist, price, year, or media) must be provided' });
-      }
-    
-      let filters = {
-        $or: [
-          { title: { $regex: search, $options: 'i' } },
-          { artist: { $regex: search, $options: 'i' } }
-        ]
-      };
-    
-      if (artist) {
-        filters.artist = { $regex: artist, $options: 'i' }; // Filter by artist
-      }
-    
-      if (price) {
-        const priceNumber = Number(price.replace(/[^\d.-]/g, '')); // Convert price to a number
-        if (isNaN(priceNumber)) {
-          return res.status(400).json({ error: 'Invalid price format' });
-        }
-        filters.price = priceNumber; // Filter by exact price
-      }
-    
-      if (year) {
-        const yearNumber = Number(year);
-        if (isNaN(yearNumber)) {
-          return res.status(400).json({ error: 'Invalid year format' });
-        }
-        filters.year = yearNumber; // Filter by year (as a number)
-      }
-    
-      if (media) {
-        filters.media = { $regex: media, $options: 'i' }; // Case-insensitive filter for media type
-      }
-    
       try {
-        const photos = await photoCollection.find(filters).toArray();
-        if (photos.length === 0) {
-          return res.status(404).json({ message: 'No photos found matching your search' });
+        const { query, price, year, media } = req.query; // Extract query parameters
+        
+        if (!query) {
+          return res.status(400).json({ error: 'Search query is required' });
         }
     
-        res.json(photos);
+        // Base search filter for all collections
+        const searchFilter = {
+          $or: [
+            { title: { $regex: query, $options: 'i' } },
+            { artist: { $regex: query, $options: 'i' } }
+          ]
+        };
+    
+        // Additional Filters **only for photoCollection**
+        const photoFilter = { ...searchFilter };
+    
+        if (price) {
+          const priceNumber = Number(price.replace(/[^\d.-]/g, ''));
+          if (isNaN(priceNumber)) {
+            return res.status(400).json({ error: 'Invalid price format' });
+          }
+          photoFilter.price = priceNumber; // Apply price filter only for photos
+        }
+    
+        if (year) {
+          const yearNumber = Number(year);
+          if (isNaN(yearNumber)) {
+            return res.status(400).json({ error: 'Invalid year format' });
+          }
+          photoFilter.year = yearNumber; // Apply year filter only for photos
+        }
+    
+        if (media) {
+          photoFilter.media = { $regex: media, $options: 'i' }; // Apply media filter only for photos
+        }
+    
+        // Run parallel queries
+        const [photoResults, auctionResults, exhibitionResults] = await Promise.all([
+          photoCollection.find(photoFilter).toArray(), // Apply additional filters
+          auctionCollection.find(searchFilter).toArray(), // Only title & artist filter
+          exhibitionCollection.find(searchFilter).toArray() // Only title & artist filter
+        ]);
+    
+        // Combine results with type tags
+        const combinedResults = [
+          ...photoResults.map(item => ({ ...item, type: "photo" })),
+          ...auctionResults.map(item => ({ ...item, type: "auction" })),
+          ...exhibitionResults.map(item => ({ ...item, type: "exhibition" }))
+        ];
+    
+        if (combinedResults.length === 0) {
+          return res.status(404).json({ message: `No results found for "${query}"` });
+        }
+    
+        res.json(combinedResults);
+    
       } catch (error) {
-        console.error('Error during search:', error);
+        console.error('Search Error:', error);
         res.status(500).json({ error: 'Internal Server Error' });
       }
     });
